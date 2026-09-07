@@ -6,6 +6,9 @@ Desktop.
 
 ## What it captures
 
+Eight steps, one page each — except step 8, which adds a page per installed
+password manager, so a machine with two produces a nine-page PDF.
+
 1. **Software Update** — current update status
 2. **Lock Screen** — auto-lock timeout settings
 3. **Privacy & Security** — "Allow applications from" and FileVault status
@@ -13,7 +16,7 @@ Desktop.
 5. **Gatekeeper** — `spctl --status`
 6. **XProtect** — XProtect processes in Activity Monitor
 7. **Password Policy** — the "BYOD Password Policy" profile detail in System Settings > General > Device Management, showing the description, install date, and enforced payload values (minimum length, lockout, no expiry) — authoritative, OS-rendered evidence
-8. **1Password** — Finder "Get Info" window proving the app is installed and its version (skipped if not installed). The app is never launched, so no vault contents are exposed.
+8. **Password manager** — Finder "Get Info" window proving a supported password manager is installed, and its version. 1Password and Bitwarden are detected, in `/Applications` or `~/Applications`; if both are installed both are captured, adding a page. Skipped with a log line if neither is found. The app is never launched, so no vault contents are exposed.
 
 ## Build
 
