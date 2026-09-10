@@ -304,6 +304,29 @@ func closeTerminal() {
     """)
 }
 
+// MARK: - Finder Helper
+
+/// Reveal an app bundle in Finder and open its Get Info panel. The panel becomes
+/// the frontmost Finder window, so captureWindow("Finder", …) grabs it. Closing
+/// every window first is what makes this safe to call in a loop - each call
+/// clears the previous Get Info panel before opening the next.
+func openFinderGetInfo(_ path: String) {
+    runAppleScript("""
+        tell application "Finder"
+            activate
+            close every window
+            reveal (POSIX file "\(path)" as alias)
+        end tell
+    """)
+    Thread.sleep(forTimeInterval: 1.5)
+    postKey(kVK_I, flags: .maskCommand)
+    Thread.sleep(forTimeInterval: 1.5)
+}
+
+func closeFinderWindows() {
+    runAppleScript("tell application \"Finder\" to close every window")
+}
+
 // MARK: - System Settings Helper
 
 func openSettings(_ url: String) {
@@ -574,30 +597,38 @@ func main() {
     quitApp(systemSettingsID)
 
     // --- PAGE 8: Password manager (proof of installation only) ---
-    // We deliberately DO NOT launch 1Password: its window could expose vault
-    // contents / other clients' logins depending on its current state. A Finder
-    // "Get Info" window proves the app is installed and shows its version,
-    // straight from the bundle metadata, without ever opening the app.
-    step(8, "1Password (proof of installation)")
-    let onePasswordPath = "/Applications/1Password.app"
-    if FileManager.default.fileExists(atPath: onePasswordPath) {
-        // Close any stray Finder windows, then reveal & select the app.
-        runAppleScript("""
-            tell application "Finder"
-                activate
-                close every window
-                reveal (POSIX file "\(onePasswordPath)" as alias)
-            end tell
-        """)
-        Thread.sleep(forTimeInterval: 1.5)
-        // Cmd-I -> Get Info. The Get Info panel becomes the frontmost Finder
-        // window, so captureWindow("Finder", …) grabs it (front-to-back order).
-        postKey(kVK_I, flags: .maskCommand)
-        Thread.sleep(forTimeInterval: 1.5)
-        capture("Finder", "1Password installed (Get Info)")
-        runAppleScript("tell application \"Finder\" to close every window")
+    // We deliberately DO NOT launch the password manager: its window could
+    // expose vault contents / other clients' logins depending on its current
+    // state. A Finder "Get Info" window proves the app is installed and shows
+    // its version, straight from the bundle metadata, without ever opening it.
+    //
+    // Every installed manager is evidenced, so a machine with two produces two
+    // pages. This is still one step - page count varies, step count does not.
+    step(8, "Password manager (proof of installation)")
+
+    // Display name -> candidate bundle names. 1Password 7 shipped under a
+    // versioned bundle name; 1Password 8 and both Bitwarden builds (direct
+    // download and Mac App Store) use the unversioned name.
+    let passwordManagers: [(name: String, bundles: [String])] = [
+        ("1Password", ["1Password.app", "1Password 7.app"]),
+        ("Bitwarden", ["Bitwarden.app"]),
+    ]
+    let appDirs = ["/Applications", "\(NSHomeDirectory())/Applications"]
+
+    var foundManager = false
+    for pm in passwordManagers {
+        let candidates = appDirs.flatMap { dir in pm.bundles.map { "\(dir)/\($0)" } }
+        guard let path = candidates.first(where: { FileManager.default.fileExists(atPath: $0) })
+        else { continue }
+        foundManager = true
+        openFinderGetInfo(path)
+        capture("Finder", "\(pm.name) installed (Get Info)")
+    }
+    if foundManager {
+        closeFinderWindows()
     } else {
-        log("  i Not installed - skipping")
+        let names = passwordManagers.map(\.name).joined(separator: " or ")
+        log("  i No password manager found (\(names)) - skipping")
     }
 
     // Cleanup running apps
