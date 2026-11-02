@@ -50,11 +50,31 @@ func shellQuote(_ s: String) -> String {
 
 let systemSettingsID = "com.apple.systempreferences"
 
-func quitApp(_ bundleID: String) {
-    NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        .forEach { $0.terminate() }
-    while !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty {
-        Thread.sleep(forTimeInterval: 0.5)
+/// Ask an app to quit, escalating to a force-quit if it hasn't gone after
+/// `timeout`. `terminate()` is only a request: an app showing a sheet or modal
+/// (e.g. System Settings' profile detail sheet) acknowledges it — the call
+/// returns true — and then simply keeps running. Without the fallback, the
+/// wait loop below would spin forever.
+func quitApp(_ bundleID: String, timeout: TimeInterval = 5) {
+    func running() -> [NSRunningApplication] {
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+    }
+    func waitUntilGone(_ seconds: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if running().isEmpty { return true }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return running().isEmpty
+    }
+
+    running().forEach { $0.terminate() }
+    if !waitUntilGone(timeout) {
+        log("  i \(bundleID) ignored quit - force quitting")
+        running().forEach { $0.forceTerminate() }
+        if !waitUntilGone(timeout) {
+            log("  \u{26A0} \(bundleID) still running after force quit - continuing anyway")
+        }
     }
     Thread.sleep(forTimeInterval: 0.5)
 }
@@ -97,6 +117,7 @@ let kVK_A: CGKeyCode = 0
 let kVK_F: CGKeyCode = 3
 let kVK_I: CGKeyCode = 34
 let kVK_Tab: CGKeyCode = 48
+let kVK_Escape: CGKeyCode = 53
 let kVK_PageDown: CGKeyCode = 121
 
 func postKey(_ code: CGKeyCode, flags: CGEventFlags = []) {
@@ -274,34 +295,97 @@ func axMouseClick(_ bundleID: String, value: String, clickCount: Int = 1) -> Boo
 /// thread (so the progress window stays live), but NSAppleScript wants the main
 /// thread, so we always marshal there.
 @discardableResult
-func runAppleScript(_ source: String) -> NSDictionary? {
+func runAppleScript(_ source: String) -> (result: NSAppleEventDescriptor?, error: NSDictionary?) {
     var error: NSDictionary?
-    let work: () -> Void = { _ = NSAppleScript(source: source)?.executeAndReturnError(&error) }
+    var result: NSAppleEventDescriptor?
+    let work: () -> Void = { result = NSAppleScript(source: source)?.executeAndReturnError(&error) }
     if Thread.isMainThread { work() } else { DispatchQueue.main.sync(execute: work) }
-    return error
+    return (result, error)
+}
+
+func appleScriptErrorText(_ error: NSDictionary) -> String {
+    let msg = error[NSAppleScript.errorMessage] as? String ?? "unknown error"
+    let num = error[NSAppleScript.errorNumber].map { " (\($0))" } ?? ""
+    return msg + num
 }
 
 // MARK: - Terminal Helper
 
+let terminalID = "com.apple.Terminal"
+
+/// Windows Testify opened, so cleanup touches only those and never the
+/// user's own Terminal sessions.
+var terminalWindowIDs: [Int32] = []
+/// Whether Terminal was already running before Testify first used it. Only
+/// if it wasn't do we quit it at the end.
+var terminalWasRunning: Bool?
+
 func runInTerminal(_ command: String) {
+    if terminalWasRunning == nil {
+        terminalWasRunning = !NSRunningApplication
+            .runningApplications(withBundleIdentifier: terminalID).isEmpty
+    }
     let escaped = command
         .replacingOccurrences(of: "\\", with: "\\\\")
         .replacingOccurrences(of: "\"", with: "\\\"")
-    runAppleScript("""
+    // Launching Terminal opens an empty window of its own. If we launched it,
+    // run the first command in that window rather than leaving it blank beside
+    // ours. Otherwise `do script` with no target opens a new front window.
+    let reuseLaunchWindow = terminalWasRunning == false && terminalWindowIDs.isEmpty
+    let (result, error) = runAppleScript("""
         tell application "Terminal"
             activate
-            do script "\(escaped)"
+            if \(reuseLaunchWindow) and (count of windows) > 0 then
+                do script "\(escaped)" in front window
+            else
+                do script "\(escaped)"
+            end if
+            return id of front window
         end tell
     """)
+    if let error {
+        log("  \u{26A0} Terminal script failed: \(appleScriptErrorText(error))")
+    } else if let wid = result?.int32Value, wid != 0 {
+        terminalWindowIDs.append(wid)
+    }
 }
 
+/// Close the Terminal windows Testify opened, logging why if one won't close.
+func closeTerminalWindows() {
+    // If we launched Terminal, every window in it is ours, including a launch
+    // window that showed up too late to be reused.
+    if terminalWasRunning == false {
+        let (result, _) = runAppleScript("tell application \"Terminal\" to get id of every window")
+        if let list = result, list.numberOfItems > 0 {
+            for i in 1...list.numberOfItems {
+                if let wid = list.atIndex(i)?.int32Value, !terminalWindowIDs.contains(wid) {
+                    terminalWindowIDs.append(wid)
+                }
+            }
+        } else if let wid = result?.int32Value, wid != 0, !terminalWindowIDs.contains(wid) {
+            terminalWindowIDs.append(wid)   // a single window can come back unwrapped
+        }
+    }
+    for wid in terminalWindowIDs {
+        let (_, error) = runAppleScript("""
+            tell application "Terminal"
+                if exists window id \(wid) then close window id \(wid) saving no
+            end tell
+        """)
+        if let error {
+            log("  \u{26A0} Couldn't close Terminal window \(wid): \(appleScriptErrorText(error))")
+        }
+    }
+    terminalWindowIDs.removeAll()
+}
+
+/// Final cleanup: close our windows, and quit Terminal only if Testify launched it.
+/// quitApp falls back to a force quit, so leftover windows can't survive that path.
 func closeTerminal() {
-    runAppleScript("""
-        tell application "Terminal"
-            close every window saving no
-            quit
-        end tell
-    """)
+    closeTerminalWindows()
+    if terminalWasRunning == false {
+        quitApp(terminalID)
+    }
 }
 
 // MARK: - System Settings Helper
@@ -528,7 +612,7 @@ func main() {
 
     // --- PAGE 6: XProtect (Activity Monitor) ---
     step(6, "XProtect processes")
-    runAppleScript("tell application \"Terminal\" to close every window saving no")
+    closeTerminalWindows()
     Thread.sleep(forTimeInterval: 0.5)
     shell("open -a 'Activity Monitor'")
     waitForWindow("Activity Monitor")
@@ -571,6 +655,13 @@ func main() {
     }
     Thread.sleep(forTimeInterval: 2.5)
     capture("System Settings", "Password policy profile")
+    // Dismiss the detail sheet before quitting: while it's up, System Settings
+    // accepts the quit request but ignores it (seen on macOS 27).
+    NSRunningApplication.runningApplications(withBundleIdentifier: systemSettingsID)
+        .first?.activate()
+    Thread.sleep(forTimeInterval: 0.3)
+    postKey(kVK_Escape)
+    Thread.sleep(forTimeInterval: 0.5)
     quitApp(systemSettingsID)
 
     // --- PAGE 8: Password manager (proof of installation only) ---
