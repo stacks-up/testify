@@ -38,6 +38,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <string>Testify</string>
     <key>CFBundleDisplayName</key>
     <string>Testify</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -52,6 +54,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+# App icon (regenerate with: swift make-icon.swift).
+mkdir -p "$APP/Contents/Resources"
+cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 # 3. Sign with the stable self-signed identity.
 #    A stable identity + stable bundle id => stable TCC designated
