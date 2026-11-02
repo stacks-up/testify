@@ -1,7 +1,7 @@
 // ============================================================
 // Draws Testify's app icon and writes AppIcon.icns.
 //
-//   swift make-icon.swift            # regenerate AppIcon.icns
+//   swift make-icon.swift            # regenerate AppIcon.icns and docs/icon.png
 //
 // The design follows the Stack palette: a near-black tile, a laptop whose
 // screen shows a report, and a purple-to-pink seal (the logo's chevron
@@ -191,6 +191,14 @@ guard iconutil.terminationStatus == 0 else {
     exit(1)
 }
 print("Wrote \(out.path)")
+
+// PNG for the README (GitHub can't display .icns). 512px so it stays sharp
+// on high-resolution screens when shown at 128px.
+let docs = dir.appendingPathComponent("docs")
+try FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
+let readmeIcon = docs.appendingPathComponent("icon.png")
+try renderPNG(size: 512).write(to: readmeIcon)
+print("Wrote \(readmeIcon.path)")
 
 // Optional preview: `swift make-icon.swift --preview <path.png>` also writes a 1024px PNG.
 if let i = CommandLine.arguments.firstIndex(of: "--preview"), i + 1 < CommandLine.arguments.count {
