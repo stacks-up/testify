@@ -135,3 +135,12 @@ sudo profiles remove -identifier biz.stack.byod.passwordpolicy.profile
 > lockout settings, use `pwpolicy -setglobalpolicy` instead — but that produces
 > no managed profile, so page 7 would have nothing to capture and you'd evidence
 > it manually (e.g. `pwpolicy -n /Local/Default -getglobalpolicy` in a terminal).
+
+## Contributing
+
+Pull request titles and commit messages follow
+[Conventional Commits](https://www.conventionalcommits.org):
+`<type>[(scope)][!]: <description>`, with a lowercase description, for example
+`fix: prevent stall on the password policy page` or `feat(icon): add app icon`.
+Types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`,
+`revert`, `style`, `test`. A check on every pull request enforces this.
