@@ -15,7 +15,7 @@ password manager, so a machine with two produces a nine-page PDF.
 4. **System Integrity Protection** — `csrutil status`
 5. **Gatekeeper** — `spctl --status`
 6. **XProtect** — XProtect processes in Activity Monitor
-7. **Password Policy** — the "BYOD Password Policy" profile detail in System Settings > General > Device Management, showing the description, install date, and enforced payload values (minimum length, lockout, no expiry) — authoritative, OS-rendered evidence
+7. **Password Policy** — the "BYOD Password Policy" profile detail in System Settings > General > Device Management, showing the description, install date, and enforced payload values (minimum length, complexity, failed attempts, expiry) — authoritative, OS-rendered evidence
 8. **Password manager** — Finder "Get Info" window proving a supported password manager is installed, and its version. 1Password and Bitwarden are detected, in `/Applications` or `~/Applications`; if both are installed both are captured, adding a page. Skipped with a log line if neither is found. The app is never launched, so no vault contents are exposed.
 
 ## Build
@@ -108,9 +108,14 @@ Settings > General > Device Management**. Page 7 of the attestation captures the
 profile's detail sheet — description, install date, and enforced payload values
 — directly from that pane.
 
+The policy values live in `password-policy.conf`, which is git-ignored so your
+organisation's policy is never committed. Create it from the example and set
+your values (minimum length, complexity, failed-attempt limit, expiry,
+organisation name and description):
+
 ```bash
-# Generate the profile (mirrors the existing device policy:
-# 10-char minimum, no expiry, no complexity, lock after 5 fails):
+cp password-policy.conf.example password-policy.conf
+# edit password-policy.conf, then generate the profile:
 ./make-password-profile.sh
 ```
 
@@ -128,11 +133,11 @@ sudo profiles list                # includes this System-scope profile
 sudo profiles remove -identifier biz.stack.byod.passwordpolicy.profile
 ```
 
-> **Fidelity note.** A passcode-policy payload matches the password-strength rules
-> exactly (length, no expiry, no complexity) but cannot express
-> `minutesUntilFailedLoginReset=15`, and treats `maxFailedAttempts` as a login
-> delay rather than an account lock. For a byte-exact reproduction of those
-> lockout settings, use `pwpolicy -setglobalpolicy` instead — but that produces
+> **Fidelity note.** A passcode-policy payload expresses the password-strength
+> rules (length, complexity, expiry) exactly, but cannot express pwpolicy's
+> `minutesUntilFailedLoginReset`, and treats `maxFailedAttempts` as a login
+> delay rather than an account lock. For an exact reproduction of a
+> `pwpolicy` lockout policy, use `pwpolicy -setglobalpolicy` instead — but that produces
 > no managed profile, so page 7 would have nothing to capture and you'd evidence
 > it manually (e.g. `pwpolicy -n /Local/Default -getglobalpolicy` in a terminal).
 

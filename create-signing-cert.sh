@@ -37,8 +37,12 @@ openssl pkcs12 -export -legacy -out "$TMP/cert.p12" \
     -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
     -passout pass:testify -name "$CN"
 
-# 3. Import key+cert and let codesign use the private key (-A).
-security import "$TMP/cert.p12" -k "$KC" -P "testify" -T /usr/bin/codesign -A
+# 3. Import key+cert, letting only codesign use the private key without a
+#    prompt. Deliberately no -A: that would let ANY app silently use or export
+#    the key, and anything signed with it would inherit Testify's TCC grants
+#    (Accessibility, Screen Recording), since they're keyed to this cert.
+#    The -P password only protects the temporary .p12, deleted on exit.
+security import "$TMP/cert.p12" -k "$KC" -P "testify" -T /usr/bin/codesign
 
 # 4. Trust it for code signing in the user domain (no sudo).
 security add-trusted-cert -r trustRoot -p codeSign -k "$KC" "$TMP/cert.pem"

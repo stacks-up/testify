@@ -2,3 +2,6 @@ dist/
 
 .DS_Store
 
+
+# Local password policy (keep your organisation's policy out of the repo)
+password-policy.conf
