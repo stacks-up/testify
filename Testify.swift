@@ -19,7 +19,7 @@
 //   System Settings > Privacy & Security > Screen Recording
 //   System Settings > Privacy & Security > Automation
 //
-// Output: ~/Desktop/2026-03-09 BYOD Device Controls Attestation.pdf
+// Output: ~/Desktop/<date> BYOD Device Controls Attestation.pdf
 // ============================================================
 
 import Cocoa

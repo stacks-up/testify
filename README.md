@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/icon.png" width="128" height="128" alt="Testify app icon: a laptop with a tick seal">
+</p>
+
 # Testify
 
 A single-file Swift tool that captures macOS security settings as screenshots
@@ -6,17 +10,25 @@ Desktop.
 
 ## What it captures
 
-Eight steps, one page each — except step 8, which adds a page per installed
-password manager, so a machine with two produces a nine-page PDF.
+Eight steps, one page each. Step 8 adds a page per installed password manager,
+so a machine with two produces a nine-page PDF.
 
-1. **Software Update** — current update status
-2. **Lock Screen** — auto-lock timeout settings
-3. **Privacy & Security** — "Allow applications from" and FileVault status
-4. **System Integrity Protection** — `csrutil status`
-5. **Gatekeeper** — `spctl --status`
-6. **XProtect** — XProtect processes in Activity Monitor
-7. **Password Policy** — the "BYOD Password Policy" profile detail in System Settings > General > Device Management, showing the description, install date, and enforced payload values (minimum length, complexity, failed attempts, expiry) — authoritative, OS-rendered evidence
-8. **Password manager** — Finder "Get Info" window proving a supported password manager is installed, and its version. 1Password and Bitwarden are detected, in `/Applications` or `~/Applications`; if both are installed both are captured, adding a page. Skipped with a log line if neither is found. The app is never launched, so no vault contents are exposed.
+1. **Software Update** - current update status
+2. **Lock Screen** - auto-lock timeout settings
+3. **Privacy & Security** - "Allow applications from" and FileVault status
+4. **System Integrity Protection** - `csrutil status`
+5. **Gatekeeper** - `spctl --status`
+6. **XProtect** - XProtect processes in Activity Monitor
+7. **Password Policy** - the "BYOD Password Policy" profile detail in System Settings > General > Device Management, showing the description, install date, and enforced payload values (minimum length, complexity, failed attempts, expiry). This is authoritative, OS-rendered evidence.
+8. **Password manager** - Finder "Get Info" window proving a supported password manager is installed, and its version. 1Password and Bitwarden are detected, in `/Applications` or `~/Applications`; if both are installed both are captured, adding a page. Skipped with a log line if neither is found. The app is never launched, so no vault contents are exposed.
+
+## Requirements
+
+- macOS 26 or later
+- Xcode Command Line Tools, for `swiftc` (`xcode-select --install`)
+- OpenSSL 3, for `create-signing-cert.sh` (`brew install openssl`). The
+  `openssl` that ships with macOS is LibreSSL, which lacks the `-legacy` option
+  the script needs. Homebrew's must come first on your `PATH`.
 
 ## Build
 
@@ -24,10 +36,10 @@ The tool ships as a signed `Testify.app` bundle so that macOS attributes
 its permissions to **the app itself, not the terminal that launched it**.
 
 ```bash
-# One time per machine — create the self-signed signing identity:
+# One time per machine - create the self-signed signing identity:
 ./create-signing-cert.sh
 
-# Each build — compile, bundle, and sign:
+# Each build - compile, bundle, and sign:
 ./package.sh
 ```
 
@@ -38,6 +50,16 @@ dist/
 ├── Testify.app                         # signed, permission-owning app
 └── BYOD-PasswordPolicy.mobileconfig    # password-policy profile
 ```
+
+The signing key is usable only by `codesign`, so other apps can't use it to
+sign code that would inherit Testify's permissions. Identities created by an
+older version of the script allowed any app to use the key. To restrict one
+without replacing it (which would reset Testify's permissions), open Keychain
+Access, find the **Testify Signing** private key, and on the **Access Control**
+tab choose **Confirm before allowing access**, keeping `codesign` in the list.
+
+The app icon is drawn in code. To change it, edit `make-icon.swift` and run
+`swift make-icon.swift`, which regenerates `AppIcon.icns` and `docs/icon.png`.
 
 ## Run
 
@@ -50,11 +72,11 @@ open dist/Testify.app
 > Do **not** run the inner binary directly
 > (`dist/Testify.app/Contents/MacOS/Testify`).
 > A binary launched as a child of Terminal inherits Terminal as its TCC
-> "responsible process", which is exactly why permissions used to land on
-> Terminal. `open` launches the app as its own responsible process.
+> "responsible process", so permissions would apply to Terminal instead.
+> `open` launches the app as its own responsible process.
 
 A small progress window (status line, progress bar, and a scrolling log) appears
-while it runs — since there's no terminal output when launched as an `.app`. It
+while it runs, since there's no terminal output when launched as an `.app`. It
 parks in the top-left, clear of the windows being captured. When finished it
 shows "Done"; close the window to quit.
 
@@ -62,17 +84,17 @@ Output: `~/Desktop/<date> BYOD Device Controls Attestation.pdf` (opens automatic
 
 ## Required permissions
 
-Grant these to **Testify.app** (no longer to Terminal):
+Grant these to **Testify.app**, not to Terminal:
 
 | Permission | Location | Why |
 |---|---|---|
-| **Accessibility** | System Settings > Privacy & Security > Accessibility | Read and interact with UI elements (scroll, click, set search fields) |
+| **Accessibility** | System Settings > Privacy & Security > Accessibility | Read and interact with UI elements in System Settings and Activity Monitor (scroll, click, set search fields) |
 | **Screen Recording** | System Settings > Privacy & Security > Screen Recording | Capture window screenshots |
-| **Automation** | System Settings > Privacy & Security > Automation | Drive Terminal / System Settings / Activity Monitor via Apple Events |
+| **Automation** | System Settings > Privacy & Security > Automation | Drive Terminal and Finder via Apple Events |
 
 On first launch the app prompts for Accessibility, then checks Screen Recording
 (and prompts for Automation as it drives each app). Grant each one and reopen
-the app — macOS only applies a fresh grant to the next launch.
+the app, as macOS only applies a fresh grant to the next launch.
 
 **Screen Recording is the awkward one.** Captures are taken by a `screencapture`
 child process, which never raises a prompt of its own and simply writes nothing
@@ -80,7 +102,7 @@ when denied, so the app asks on its own behalf via
 `CGRequestScreenCaptureAccess`. Two things to know:
 
 - It is **never granted inline.** Unlike Camera or Microphone, there is no
-  Allow button — the system prompt only offers to open System Settings. You
+  Allow button; the system prompt only offers to open System Settings. You
   always finish the grant with a toggle under **System Settings > Privacy &
   Security > Screen Recording**. The app opens that pane for you.
 - The prompt appears **at most once per app identity.** Once TCC has recorded
@@ -97,16 +119,15 @@ open dist/Testify.app
 **Permissions persist across rebuilds.** The app is signed with a stable
 self-signed identity, so its designated requirement
 (`identifier "biz.stack.testify" and certificate leaf = …`) does not
-change when you recompile — grant once. (This was not true of the old bare
-binary, whose ad-hoc signature changed every build.)
+change when you recompile. Grant once.
 
 ## Password policy (configuration profile)
 
 The password policy is enforced by a managed configuration profile rather than a
 local `pwpolicy` command, so it shows up as an auditable control under **System
 Settings > General > Device Management**. Page 7 of the attestation captures the
-profile's detail sheet — description, install date, and enforced payload values
-— directly from that pane.
+profile's detail sheet (description, install date, and enforced payload values)
+directly from that pane.
 
 The policy values live in `password-policy.conf`, which is git-ignored so your
 organisation's policy is never committed. Create it from the example and set
@@ -136,10 +157,11 @@ sudo profiles remove -identifier biz.stack.byod.passwordpolicy.profile
 > **Fidelity note.** A passcode-policy payload expresses the password-strength
 > rules (length, complexity, expiry) exactly, but cannot express pwpolicy's
 > `minutesUntilFailedLoginReset`, and treats `maxFailedAttempts` as a login
-> delay rather than an account lock. For an exact reproduction of a
-> `pwpolicy` lockout policy, use `pwpolicy -setglobalpolicy` instead — but that produces
-> no managed profile, so page 7 would have nothing to capture and you'd evidence
-> it manually (e.g. `pwpolicy -n /Local/Default -getglobalpolicy` in a terminal).
+> delay rather than an account lock. For an exact reproduction of a `pwpolicy`
+> lockout policy, use `pwpolicy -setglobalpolicy` instead. That produces no
+> managed profile, though, so page 7 would have nothing to capture and you'd
+> evidence it manually (e.g. `pwpolicy -n /Local/Default -getglobalpolicy` in a
+> terminal).
 
 ## Contributing
 

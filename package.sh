@@ -53,7 +53,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <string>$MIN_MACOS</string>
     <!-- Shown in the Apple Events (Automation) consent prompts. -->
     <key>NSAppleEventsUsageDescription</key>
-    <string>Testify drives System Settings, Terminal, and Activity Monitor to capture security-control evidence.</string>
+    <string>Testify drives Terminal and Finder to capture security-control evidence.</string>
 </dict>
 </plist>
 PLIST
