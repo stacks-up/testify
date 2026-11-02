@@ -20,6 +20,33 @@ if security find-identity -v -p codesigning | grep -q "$CN"; then
     exit 0
 fi
 
+# OpenSSL 3 is required: step 2 uses `pkcs12 -legacy`. The openssl that ships
+# with macOS is LibreSSL, which lacks that option and would fail partway through.
+#
+# Prints the major version of the OpenSSL binary $1, or nothing if it is
+# missing or isn't OpenSSL (e.g. LibreSSL).
+openssl_major() {
+    { "$1" version 2>/dev/null || true; } | sed -nE 's/^OpenSSL ([0-9]+)\..*/\1/p'
+}
+OPENSSL_VERSION="$(openssl version 2>/dev/null || echo "not found")"
+OPENSSL_MAJOR="$(openssl_major openssl)"
+if [[ -z "$OPENSSL_MAJOR" || "$OPENSSL_MAJOR" -lt 3 ]]; then
+    echo "This script needs OpenSSL 3 or later, but \`openssl\` on your PATH is: $OPENSSL_VERSION" >&2
+    echo "(macOS ships LibreSSL, which lacks the \`pkcs12 -legacy\` option used here.)" >&2
+    echo >&2
+    # If Homebrew's OpenSSL is installed but not first on PATH, say exactly how to use it.
+    for candidate in /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl; do
+        if [[ -x "$candidate" && "$(openssl_major "$candidate")" -ge 3 ]]; then
+            echo "Homebrew's OpenSSL 3 is installed but isn't first on your PATH. Run:" >&2
+            echo "  PATH=\"$(dirname "$candidate"):\$PATH\" $0" >&2
+            exit 1
+        fi
+    done
+    echo "Install it with Homebrew, then re-run this script:" >&2
+    echo "  brew install openssl@3" >&2
+    exit 1
+fi
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
